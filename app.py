@@ -4,23 +4,23 @@ import json
 from mistralai import Mistral
 import time
 
-# Function to stream a string with a delay
+# Función para transmitir una cadena con un retraso
 def stream_str(s, speed=250):
-    """Yields characters from a string with a delay to simulate streaming."""
+    """Genera caracteres de una cadena con un retraso para simular la transmisión."""
     for c in s:
         yield c
         time.sleep(1 / speed)
 
-# Function to stream the response from the AI
+# Función para transmitir la respuesta desde la IA
 def stream_response(response):
-    """Yields responses from the AI, replacing placeholders as needed."""
+    """Genera respuestas desde la IA, reemplazando marcadores según sea necesario."""
     for r in response:
         if hasattr(r, 'delta') and r.delta.content:
             content = r.delta.content
             content = content.replace("$", "\$")
             yield content
 
-# MAIN
+# PRINCIPAL
 st.set_page_config(
     page_title="LLMHackathon",
     page_icon="🤖",
@@ -68,7 +68,7 @@ def get_agents(auth_token):
     if response.status_code == 200:
         return response.json()
     else:
-        st.error(f"Failed to retrieve agents. Status code: {response.status_code}")
+        st.error(f"Error al recuperar agentes. Código de estado: {response.status_code}")
         return []
 
 def get_agent_completion(agent_id: str, custom_content: str):
@@ -119,26 +119,26 @@ with st.sidebar:
     # Si tenemos las credenciales de Mistral, mostramos la opción de seleccionar proveedor
     if st.session_state['MISTRAL_API_KEY'] and st.session_state['MISTRAL_MODEL']:
         st.session_state['provider'] = st.radio(
-            "Select Provider:",
+            "Seleccionar Proveedor:",
             options=['Mistral AI', 'CodeGPT'],
             index=0
         )
     if st.session_state['provider'] == 'CodeGPT' and st.session_state['CODEGPT_API_KEY']:
         agents = get_agents(st.session_state['CODEGPT_API_KEY'])
         st.session_state['selected_agent'] = st.selectbox(
-            "Select an agent:",
+            "Seleccionar un agente:",
             options=agents,
             format_func=lambda agent: f"{agent['name']}"
         )
 
-# Chat interface
+# Interfaz de chat
 if (st.session_state['provider'] == 'CodeGPT' and st.session_state['selected_agent']) or \
     (st.session_state['provider'] == 'Mistral AI'):
     for message in st.session_state['messages']:
         with st.chat_message("user" if message['role'] == "user" else "assistant"):
             st.write(message['content'])
 
-    user_prompt = st.chat_input("Say something")
+    user_prompt = st.chat_input("Di algo")
     if user_prompt:
         # Mostrar mensaje del usuario
         st.session_state['messages'].append({"role": "user", "content": user_prompt})
