@@ -1,6 +1,7 @@
 import streamlit as st
 import requests
 import json
+import openai
 from mistralai import Mistral
 import time
 
@@ -10,15 +11,6 @@ def stream_str(s, speed=250):
     for c in s:
         yield c
         time.sleep(1 / speed)
-
-# Función para transmitir la respuesta desde la IA
-def stream_response(response):
-    """Genera respuestas desde la IA, reemplazando marcadores según sea necesario."""
-    for r in response:
-        if hasattr(r, 'delta') and r.delta.content:
-            content = r.delta.content
-            content = content.replace("$", "\$")
-            yield content
 
 # PRINCIPAL
 st.set_page_config(
@@ -39,8 +31,14 @@ if 'CODEGPT_API_KEY' not in st.session_state:
 if 'MISTRAL_API_KEY' not in st.session_state:
     st.session_state['MISTRAL_API_KEY'] = st.secrets["MISTRAL_API_KEY"] if "MISTRAL_API_KEY" in st.secrets else ""
 
+if 'OPENAI_API_KEY' not in st.session_state:
+    st.session_state['OPENAI_API_KEY'] = st.secrets["OPENAI_API_KEY"] if "OPENAI_API_KEY" in st.secrets else ""
+
 if 'MISTRAL_MODEL' not in st.session_state:
     st.session_state['MISTRAL_MODEL'] = st.secrets["MISTRAL_MODEL"] if "MISTRAL_MODEL" in st.secrets else "mistral-large-latest"
+
+if 'OPENAI_MODEL' not in st.session_state:
+    st.session_state['OPENAI_MODEL'] = st.secrets["OPENAI_MODEL"] if "OPENAI_MODEL" in st.secrets else "gpt-4o-mini"
 
 if 'messages' not in st.session_state:
     st.session_state['messages'] = []
@@ -105,6 +103,16 @@ def get_mistral_completion(prompt: str):
     )
     return chat_response.choices[0].message.content
 
+def get_openai_completion(prompt: str):
+    openai.api_key = st.session_state['OPENAI_API_KEY']
+    response = openai.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "user", "content": prompt}
+        ]
+    )
+    return response.choices[0].message.content.strip()
+
 # Interfaz principal
 st.title('LLMHackathon')
 if st.button("Reset Chat"):
@@ -116,13 +124,22 @@ with st.sidebar:
             "CodeGPT API Key:",
             type="password"
         )
-    # Si tenemos las credenciales de Mistral, mostramos la opción de seleccionar proveedor
-    if st.session_state['MISTRAL_API_KEY'] and st.session_state['MISTRAL_MODEL']:
-        st.session_state['provider'] = st.radio(
-            "Seleccionar Proveedor:",
-            options=['Mistral AI', 'CodeGPT'],
-            index=0
+    if not st.session_state['OPENAI_API_KEY']:
+        st.session_state['OPENAI_API_KEY'] = st.text_input(
+            "OpenAI API Key:",
+            type="password"
         )
+    
+    # Si tenemos las credenciales de Mistral, mostramos la opción de seleccionar proveedor
+    providers = ['Mistral AI', 'CodeGPT']
+    if st.session_state['OPENAI_API_KEY']:
+        providers.append('OpenAI ChatGPT')
+    st.session_state['provider'] = st.radio(
+        "Seleccionar Proveedor:",
+        options=providers,
+        index=0
+    )
+
     if st.session_state['provider'] == 'CodeGPT' and st.session_state['CODEGPT_API_KEY']:
         agents = get_agents(st.session_state['CODEGPT_API_KEY'])
         st.session_state['selected_agent'] = st.selectbox(
@@ -133,7 +150,7 @@ with st.sidebar:
 
 # Interfaz de chat
 if (st.session_state['provider'] == 'CodeGPT' and st.session_state['selected_agent']) or \
-    (st.session_state['provider'] == 'Mistral AI'):
+    (st.session_state['provider'] in ['Mistral AI', 'OpenAI ChatGPT']):
     for message in st.session_state['messages']:
         with st.chat_message("user" if message['role'] == "user" else "assistant"):
             st.write(message['content'])
@@ -152,13 +169,16 @@ if (st.session_state['provider'] == 'CodeGPT' and st.session_state['selected_age
             
             if st.session_state['provider'] == 'CodeGPT':
                 response = get_agent_completion(st.session_state['selected_agent']['id'], user_prompt)
-                # Simular streaming para CodeGPT
+                for chunk in stream_str(response):
+                    full_response += chunk
+                    message_placeholder.markdown(full_response + "▌")
+            elif st.session_state['provider'] == 'OpenAI ChatGPT':
+                response = get_openai_completion(user_prompt)
                 for chunk in stream_str(response):
                     full_response += chunk
                     message_placeholder.markdown(full_response + "▌")
             else:  # Mistral
                 response = get_mistral_completion(user_prompt)
-                # Simular streaming
                 for chunk in stream_str(response):
                     full_response += chunk
                     message_placeholder.markdown(full_response + "▌")
